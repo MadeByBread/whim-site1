@@ -11,7 +11,10 @@
         // This is the visitor identifier:
         const visitorId = result.visitorId;
         console.log(visitorId);
+        document.getElementById("visitorId").innerHTML =
+          "Your visitor ID is: " + visitorId;
       });
   </script>
   <p>Hello world</p>
+  <p id="visitorId">Your visitor ID is:</p>
 </html>
