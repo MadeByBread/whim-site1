@@ -90,10 +90,16 @@
             characteristics.push(Math.round(avg / 32) * 32);
           }
 
-          // Add some hardware-specific metrics
+          // Add some hardware-specific metrics (quantized/filtered for consistency)
+          const cores = navigator.hardwareConcurrency || 0;
+          const quantizedCores = Math.min(
+            8,
+            Math.max(2, Math.round(cores / 2) * 2)
+          );
+
           characteristics.push(
-            navigator.hardwareConcurrency || 0,
-            navigator.deviceMemory || 0,
+            quantizedCores, // Use quantized & capped cores
+            // navigator.deviceMemory || 0, // Removed due to cross-browser inconsistency
             screen.width * screen.height,
             screen.colorDepth
           );
