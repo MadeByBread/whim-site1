@@ -1,27 +1,138 @@
+<!DOCTYPE html>
 <html>
-  <script>
-    const fpPromise = import("https://openfpcdn.io/fingerprintjs/v4").then(
-      (FingerprintJS) => FingerprintJS.load()
-    );
+  <head>
+    <title>Full Fingerprint + IP + Audio</title>
+  </head>
+  <body>
+    <p>Hello world!</p>
+    <p id="fpjsId">FPJS visitor ID: loading...</p>
+    <p id="ip">Your IP is: loading...</p>
+    <p id="visitorId">Custom fingerprint ID: loading...</p>
 
-    // Get the visitor identifier when you need it.
-    fpPromise
-      .then((fp) => fp.get())
-      .then((result) => {
-        // This is the visitor identifier:
-        const visitorId = result.visitorId;
-        console.log(visitorId);
-        document.getElementById("visitorId").innerHTML =
-          "Your visitor ID is: " + visitorId;
-      });
-    fetch("https://api64.ipify.org?format=json")
-      .then((res) => res.json())
-      .then((data) => {
-        console.log("Your IP is:", data.ip);
-        document.getElementById("ip").innerHTML = "Your IP is: " + data.ip;
-      });
-  </script>
-  <p>Hello world!</p>
-  <p id="visitorId">Your visitor ID is:</p>
-  <p id="ip">Your IP is:</p>
+    <script>
+      // Load FingerprintJS
+      const fpPromise = import("https://openfpcdn.io/fingerprintjs/v4").then(
+        (FingerprintJS) => FingerprintJS.load()
+      );
+
+      fpPromise
+        .then((fp) => fp.get())
+        .then((result) => {
+          const visitorId = result.visitorId;
+          console.log("FPJS visitor ID:", visitorId);
+          document.getElementById("fpjsId").textContent =
+            "FPJS visitor ID: " + visitorId;
+        });
+
+      // Get public IP
+      fetch("https://api64.ipify.org?format=json")
+        .then((res) => res.json())
+        .then((data) => {
+          console.log("Your IP is:", data.ip);
+          document.getElementById("ip").textContent = "Your IP is: " + data.ip;
+        });
+
+      // Advanced fingerprinting
+      async function getAudioFingerprint() {
+        const ctx = new (window.OfflineAudioContext ||
+          window.webkitOfflineAudioContext)(1, 44100, 44100);
+        const osc = ctx.createOscillator();
+        const comp = ctx.createDynamicsCompressor();
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(10000, ctx.currentTime);
+        osc.connect(comp);
+        comp.connect(ctx.destination);
+        osc.start(0);
+        ctx.startRendering();
+        return new Promise((resolve) => {
+          ctx.oncomplete = (event) => {
+            const hash = event.renderedBuffer
+              .getChannelData(0)
+              .slice(4500, 5000)
+              .reduce((a, b) => a + Math.abs(b), 0)
+              .toString();
+            resolve(hash);
+          };
+        });
+      }
+
+      function detectFonts() {
+        const baseFonts = ["monospace", "sans-serif", "serif"];
+        const testFonts = [
+          "Arial",
+          "Courier New",
+          "Georgia",
+          "Helvetica",
+          "Times",
+          "Verdana",
+        ];
+        const span = document.createElement("span");
+        span.innerText = "abcdefghi0123456789";
+        span.style.fontSize = "72px";
+        span.style.position = "absolute";
+        span.style.left = "-9999px";
+        document.body.appendChild(span);
+
+        const widths = {};
+        baseFonts.forEach((f) => {
+          span.style.fontFamily = f;
+          widths[f] = span.offsetWidth;
+        });
+
+        const available = [];
+        testFonts.forEach((font) => {
+          span.style.fontFamily = `${font}, monospace`;
+          if (span.offsetWidth !== widths["monospace"]) {
+            available.push(font);
+          }
+        });
+
+        document.body.removeChild(span);
+        return available;
+      }
+
+      async function getFingerprint() {
+        const battery = await navigator.getBattery?.().catch(() => null);
+        const audio = await getAudioFingerprint();
+
+        const data = {
+          userAgent: navigator.userAgent,
+          language: navigator.language,
+          screen: {
+            width: screen.width,
+            height: screen.height,
+            colorDepth: screen.colorDepth,
+          },
+          timezoneOffset: new Date().getTimezoneOffset(),
+          locale: Intl.DateTimeFormat().resolvedOptions().locale,
+          deviceMemory: navigator.deviceMemory,
+          hardwareConcurrency: navigator.hardwareConcurrency,
+          touchSupport: navigator.maxTouchPoints > 0,
+          fonts: detectFonts(),
+          audioFingerprint: audio,
+          battery: battery
+            ? {
+                charging: battery.charging,
+                level: battery.level,
+              }
+            : null,
+        };
+
+        // Hash it
+        const json = JSON.stringify(data);
+        const enc = new TextEncoder().encode(json);
+        const hashBuffer = await crypto.subtle.digest("SHA-256", enc);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const visitorId = hashArray
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+
+        console.log("Custom fingerprint ID:", visitorId);
+        document.getElementById("visitorId").textContent =
+          "Custom fingerprint ID: " + visitorId;
+      }
+
+      getFingerprint();
+    </script>
+  </body>
 </html>
