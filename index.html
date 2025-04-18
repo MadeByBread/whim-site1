@@ -9,6 +9,8 @@
     <p id="ip">Your IP is: loading...</p>
     <p id="visitorId">Custom fingerprint ID: loading...</p>
 
+    <p id="all-metrics">All metrics: loading...</p>
+
     <script>
       // Load FingerprintJS
       const fpPromise = import("https://openfpcdn.io/fingerprintjs/v4").then(
@@ -130,6 +132,8 @@
         console.log("Custom fingerprint ID:", visitorId);
         document.getElementById("visitorId").textContent =
           "Custom fingerprint ID: " + visitorId;
+        document.getElementById("all-metrics").textContent =
+          "All metrics: " + JSON.stringify(data);
       }
 
       getFingerprint();
