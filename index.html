@@ -36,26 +36,64 @@
 
       // Advanced fingerprinting
       async function getAudioFingerprint() {
-        const ctx = new (window.OfflineAudioContext ||
-          window.webkitOfflineAudioContext)(1, 44100, 44100);
-        const osc = ctx.createOscillator();
-        const comp = ctx.createDynamicsCompressor();
-        osc.type = "triangle";
-        osc.frequency.setValueAtTime(10000, ctx.currentTime);
-        osc.connect(comp);
-        comp.connect(ctx.destination);
-        osc.start(0);
-        ctx.startRendering();
-        return new Promise((resolve) => {
-          ctx.oncomplete = (event) => {
-            const hash = event.renderedBuffer
-              .getChannelData(0)
-              .slice(4500, 5000)
-              .reduce((a, b) => a + Math.abs(b), 0)
-              .toString();
-            resolve(hash);
-          };
-        });
+        try {
+          const ctx = new (window.OfflineAudioContext ||
+            window.webkitOfflineAudioContext)(1, 44100, 44100);
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+
+          // Use a simpler sine wave
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(440, ctx.currentTime);
+
+          // Set a fixed gain to ensure consistent amplitude
+          gain.gain.setValueAtTime(0.5, ctx.currentTime);
+
+          // Connect nodes
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+
+          // Start and render
+          osc.start(0);
+          const buffer = await ctx.startRendering();
+
+          // Get the audio data
+          const data = buffer.getChannelData(0);
+
+          // Find zero crossings to identify wave cycles
+          const zeroCrossings = [];
+          for (let i = 1; i < data.length; i++) {
+            if (data[i - 1] <= 0 && data[i] > 0) {
+              zeroCrossings.push(i);
+            }
+          }
+
+          // Take samples at fixed points within each cycle
+          const samples = [];
+          const cycles = zeroCrossings.length - 1;
+          const samplesPerCycle = 4; // Take 4 samples per cycle
+
+          for (let cycle = 0; cycle < cycles; cycle++) {
+            const start = zeroCrossings[cycle];
+            const end = zeroCrossings[cycle + 1];
+            const cycleLength = end - start;
+
+            for (let i = 0; i < samplesPerCycle; i++) {
+              const pos =
+                start + Math.floor((i * cycleLength) / samplesPerCycle);
+              // Round to nearest 100 to eliminate small differences
+              samples.push(Math.round(data[pos] * 1000));
+            }
+          }
+
+          // Take only the first 20 samples to keep it consistent
+          const hash = samples.slice(0, 20).join(",");
+
+          return hash;
+        } catch (error) {
+          console.error("Audio fingerprinting failed:", error);
+          return "error";
+        }
       }
 
       function detectFonts() {
@@ -132,8 +170,11 @@
         console.log("Custom fingerprint ID:", visitorId);
         document.getElementById("visitorId").textContent =
           "Custom fingerprint ID: " + visitorId;
-        document.getElementById("all-metrics").textContent =
-          "All metrics: " + JSON.stringify(data);
+        document.getElementById("all-metrics").innerHTML =
+          "All metrics: <br /><br />" +
+          Object.entries(data)
+            .map(([key, value]) => `<b>${key}</b>: ${JSON.stringify(value)}`)
+            .join("<br />");
       }
 
       getFingerprint();
