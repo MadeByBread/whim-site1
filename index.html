@@ -41,53 +41,67 @@
             window.webkitOfflineAudioContext)(1, 44100, 44100);
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
+          const analyser = ctx.createAnalyser();
 
-          // Use a simpler sine wave
-          osc.type = "sine";
+          // Configure analyser for frequency analysis
+          analyser.fftSize = 2048;
+          analyser.smoothingTimeConstant = 0;
+
+          // Use a more complex signal
+          osc.type = "sawtooth";
           osc.frequency.setValueAtTime(440, ctx.currentTime);
 
-          // Set a fixed gain to ensure consistent amplitude
+          // Set a fixed gain
           gain.gain.setValueAtTime(0.5, ctx.currentTime);
 
-          // Connect nodes
+          // Connect nodes with analyser
           osc.connect(gain);
-          gain.connect(ctx.destination);
+          gain.connect(analyser);
+          analyser.connect(ctx.destination);
 
           // Start and render
           osc.start(0);
           const buffer = await ctx.startRendering();
 
-          // Get the audio data
-          const data = buffer.getChannelData(0);
+          // Get frequency data
+          const frequencyData = new Uint8Array(analyser.frequencyBinCount);
+          analyser.getByteFrequencyData(frequencyData);
 
-          // Find zero crossings to identify wave cycles
-          const zeroCrossings = [];
-          for (let i = 1; i < data.length; i++) {
-            if (data[i - 1] <= 0 && data[i] > 0) {
-              zeroCrossings.push(i);
-            }
+          // Get time domain data
+          const timeData = new Uint8Array(analyser.fftSize);
+          analyser.getByteTimeDomainData(timeData);
+
+          // Combine frequency and time domain characteristics
+          const characteristics = [];
+
+          // Take frequency peaks
+          for (let i = 0; i < frequencyData.length; i += 32) {
+            const slice = frequencyData.slice(i, i + 32);
+            const max = Math.max(...slice);
+            // Quantize to nearest 32
+            characteristics.push(Math.round(max / 32) * 32);
           }
 
-          // Take samples at fixed points within each cycle
-          const samples = [];
-          const cycles = zeroCrossings.length - 1;
-          const samplesPerCycle = 4; // Take 4 samples per cycle
-
-          for (let cycle = 0; cycle < cycles; cycle++) {
-            const start = zeroCrossings[cycle];
-            const end = zeroCrossings[cycle + 1];
-            const cycleLength = end - start;
-
-            for (let i = 0; i < samplesPerCycle; i++) {
-              const pos =
-                start + Math.floor((i * cycleLength) / samplesPerCycle);
-              // Round to nearest 100 to eliminate small differences
-              samples.push(Math.round(data[pos] * 1000));
-            }
+          // Take time domain characteristics
+          for (let i = 0; i < timeData.length; i += 64) {
+            const slice = timeData.slice(i, i + 64);
+            const avg = slice.reduce((a, b) => a + b, 0) / slice.length;
+            // Quantize to nearest 32
+            characteristics.push(Math.round(avg / 32) * 32);
           }
 
-          // Take only the first 20 samples to keep it consistent
-          const hash = samples.slice(0, 20).join(",");
+          // Add some hardware-specific metrics
+          characteristics.push(
+            navigator.hardwareConcurrency || 0,
+            navigator.deviceMemory || 0,
+            screen.width * screen.height,
+            screen.colorDepth
+          );
+
+          // Create a hash that's both unique and consistent
+          const hash = characteristics
+            .map((x) => x.toString(16).padStart(2, "0"))
+            .join("");
 
           return hash;
         } catch (error) {
