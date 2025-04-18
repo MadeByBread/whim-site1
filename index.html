@@ -14,7 +14,14 @@
         document.getElementById("visitorId").innerHTML =
           "Your visitor ID is: " + visitorId;
       });
+    fetch("https://api64.ipify.org?format=json")
+      .then((res) => res.json())
+      .then((data) => {
+        console.log("Your IP is:", data.ip);
+        document.getElementById("ip").innerHTML = "Your IP is: " + data.ip;
+      });
   </script>
-  <p>Hello world</p>
+  <p>Hello world!</p>
   <p id="visitorId">Your visitor ID is:</p>
+  <p id="ip">Your IP is:</p>
 </html>
